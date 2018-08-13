@@ -1,0 +1,304 @@
+---
+title: "Midterm Assignemnt, ME314 2018"
+author: Ionelia Buzatu
+output: html_document
+---
+ 
+![](images/lse-logo.jpg)
+
+#### Summer School 2018 midsession examination  
+
+# ME314 Introduction to Data Science and Big Data 
+
+## Suitable for all candidates
+
+
+### Instructions to candidates  
+
+* Complete the assignment by adding your answers directly to the RMarkdown document, knitting the document, and submitting the HTML file to Moodle.   
+* Time allowed: due 19:00 on Wednesday, 8th August 2018.  
+* Submit the assignment via [Moodle](https://shortcourses.lse.ac.uk/course/view.php?id=158).
+
+
+You will need to load the core library for the course textbook and libraries for LDA and KNN:
+```{r message=FALSE}
+library(ISLR)
+library(MASS)
+library(class)
+library(Amelia)
+library(ggplot2)
+library(magrittr)
+library(lattice)
+library(caret)
+library(modelr)
+library(dplyr)
+library(e1071)
+```
+
+This question should be answered using the `Weekly` data set, which is part of the `ISLR` package. This data contains 1,089 weekly stock returns for 21 years, from the beginning of 1990 to the end of 2010.
+
+```{r echo = FALSE}
+data("Weekly", package = "ISLR")
+```
+
+
+1.   Produce some numerical and graphical summaries of the `Weekly` data. Do there appear to be any patterns?
+
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+head(Weekly)
+pairs(Weekly)
+str(Weekly)
+names(Weekly)
+#dim(Weekly)
+#which(is.na(Weekly))
+
+summary(Weekly)
+
+#find missing data
+missmap(Weekly, c("red", "blue"), legend = FALSE) #there is no missing data
+
+par(mfrow=c(1,8))
+for(i in 1:8) {boxplot(Weekly[,i], main=names(Weekly)[i])}
+
+
+#pairs plot shows a broad uncorrelation between most(except between Volume and Year) variables
+Weekly %>% pairs(col = Weekly$Direction)
+#Pairwise correlation of the first 8 features. Here the correlation dosen't make much sense between Today and each Lag*. The only significant correlation is between Year and Volume
+cor(Weekly[,1:8])
+
+#plot Year and Volume
+ggplot(Weekly, aes(Year, log(Volume))) + geom_point() + geom_smooth(method = "lm")
+ggplot(Weekly, aes(log(Volume))) + geom_density()
+Weekly$Year[max(Weekly$Volume)]
+
+lm(data = Weekly, Direction ~ . )
+```                        
+
+```{r, warning=FALSE}
+#Volume mean per each year
+mean_volume_year = Weekly %>% group_by(Year) %>% summarise(mean_year = mean(Volume), n = n())
+plot(Weekly$Year, mean_volume_year$mean)
+```
+
+
+
+2.  Use the full data set to perform a logistic regression with `Direction` as the response and the five lag variables plus `Volume` as predictors. Use the summary function to print the results. 
+
+    Do any of the predictors appear to be statistically significant? If so, which ones?
+    
+    
+
+```{r}
+set.seed(123)
+#for later use
+splitData <- resample_partition(Weekly, c(test = 0.3, train = 0.7))
+#train set 70%
+train  = splitData$train
+#test set 30%
+test = splitData$test
+sapply(splitData, dim)
+#head(splitData$train)
+```
+
+```{r}
+#LR model
+model = glm(data = Weekly,  Direction ~ Year + Lag1 + Lag2 + Lag3 + Lag3 + Lag4 + Lag5 + Volume, family = binomial)
+#coef(model)
+
+## By looking at the LR model only the Lag2 seems significant as predictor with a  *p_value of 0.0275 * and given its coefficient, it is the only one that affects possitvly the market.
+summary(model)
+```
+
+
+
+
+
+3.  Compute the confusion matrix and overall fraction of correct predictions. 
+     
+    Explain what the confusion matrix is telling you about the types of mistakes made by logistic regression.
+    
+    
+    
+    
+```{r}
+predict_model = predict(model, type = "response")
+str(predict_model)
+
+#first 10 probabilities
+predict_model[1:10]
+
+contrasts(Weekly$Direction)
+
+
+#dim(Weekly)
+model.prep = rep("Down", 1089)
+model.prep[predict_model > .5] = "Up" 
+
+#create the confution matrix 
+#diagonal elements of the confusion matrix indicate correct predictions, while the off-diagonals represent incorrect predictions
+table(model.prep, Weekly$Direction)
+#total correct prediction
+(558 + 54)/1089
+```
+The training error is: $43.80165%$
+
+
+
+4.  Now fit the logistic regression model using a training data period from 1990 to 2008, with `Lag2` as the only predictor. 
+
+    Compute the confusion matrix and the overall fraction of correct predictions for the held out data (that is, the data from 2009 and 2010).
+    
+    
+    
+```{r}
+range(Weekly$Year)
+test = Weekly %>% filter(Year > 2008)
+train = Weekly[Weekly$Year <= 2008,]
+lrm = glm(data =train, formula = Direction ~ Lag2, family = binomial)
+
+#check if the pvalue is increasing or decreasing and estimate if there could be a better fit
+#Above we observe a decrease in the pvalue of Log2 and a better fit compared to the previous model
+summary(lrm)
+lrm_predict = predict(lrm, test, type = "response")
+lrm[1]
+
+model_prep  = rep("Down", 104)
+model_prep[lrm_predict > .5] = "Up"
+
+#confutional matrix
+table(model_prep, test$Direction)
+
+#test error rate
+1 - (9+56)/105
+
+
+mean(model_prep != test$Direction)
+
+```
+The test error is $38.09524%$
+
+
+
+
+
+5.  Experiment with different combinations of predictors, including possible transformations and interactions, and classification methods. 
+
+    Report the variables, method, and associated confusion matrix that appears to provide the best results on the held out data.
+
+
+By having a different samples for train and test the test error rate is sliglty lower.
+```{r}
+
+##this ia failed model with high error rate
+set.seed(123)
+#transformations and interactions of predictors
+test1 = Weekly %>% filter(Year > 2002)
+train1 = Weekly[Weekly$Year <= 2002,]
+lrm = glm(data =train1, formula = Direction ~ Lag2*Volume, family = binomial)
+
+
+#check if the pvalue is increased or decreased and estimate id that's could be a better fit
+summary(lrm)
+lrm_predict = predict(lrm, test1, type = "response")
+lrm[1]
+
+model_prep  = rep("Down", 104)
+model_prep[lrm_predict > .5] = "Up"
+
+#confutional matrix
+table(model_prep, test1$Direction)
+```
+
+
+
+```{r message = FALSE}
+test_2002 = Weekly %>% filter(Year > 2002)
+train_2002 = Weekly[Weekly$Year <= 2002,]
+lrm_2002 = lda(formula = Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Year + Volume, data= train_2002)
+
+lrm_predict_2002 = predict(lrm_2002, test_2002)
+mean(lrm_predict_2002$class != Weekly$Direction) #The error rate is 54.26997%
+#table(Weekly$Direction, lrm_predict_2002$class)
+
+
+# model_prep_2002  = rep("Down", 417)
+# model_prep_2002[lrm_predict_2002 > .5] = "Up"
+# 
+# #confutional matrix
+# table(model_prep_2002, test_2002$Direction)
+
+
+
+test_2008 = Weekly %>% filter(Year > 2008)
+train_2008 = Weekly[Weekly$Year <= 2008,]
+lrm_2008 = glm(data =train1, formula = Direction ~ Lag5+ Year , family = binomial)
+#check if the pvalue is increased or decreased and estimate id that's could be a better fit
+summary(lrm_2008)
+
+
+lrm_predict_2008 = predict(lrm_2008, test_2008, type = "response")
+lrm[1]
+
+model_prep  = rep("Down", 104)
+model_prep[lrm_predict_2008 > .5] = "Up"
+
+#confutional matrix
+table(model_prep, test_2008$Direction)
+1-(47/104)
+```
+
+```{r}
+#k-Nearest Neighbour Classification model
+
+train_knn  = Weekly %>% filter(Year <= 2008)
+test_knn = Weekly %>% filter(Year > 2008)
+set.seed(123)
+
+````
+
+
+
+```{r}
+
+train_knn  = Weekly %>% select(Year, Lag1, Lag2, Lag3, Volume) %>% filter(Year <= 2008)
+test_knn = Weekly %>% select(Year, Lag1, Lag2, Lag3, Volume) %>% filter(Year > 2008)
+
+
+#train.Direction <-  Weekly$Direction
+train.Direction  = Weekly %>% filter(Year <= 2008) %>% select(Direction)
+test.Direction = Weekly %>% filter(Year > 2008) %>% select(Direction)
+
+levels(train.Direction) = c(0,1)
+levels(test.Direction) = c(0,1)
+
+set.seed(1)
+
+# KNN (k=1)
+knn.pred <-  knn(train_knn, test_knn, train.Direction[,1], k = 1)
+mean(knn.pred != test.Direction[,1])
+
+# KNN (k=10)
+knn.pred <-  knn(train_knn, test_knn, train.Direction[,1], k = 10)
+mean(knn.pred != test.Direction[,1])
+
+# KNN (k=100)
+knn.pred <-  knn(train_knn, test_knn, train.Direction[,1], k = 30)
+mean(knn.pred != test.Direction[,1])
+
+
+```
+By increasing the k(1,10,30), the error rate decreases: $0.5480769 > 0.5192308 > 0.4230769$
+
+
+```{r}
+# This was a trial. The accuracy is quite high. I aknowldge the fact that the there are some mistakes in the model. 
+# model =  train(Direction~., data = Weekly, method = "knn", trControl = trainControl("cv", number = 17),
+#   preProcess = c("center","scale", "pca"),
+#   tuneLength = 20)
+# plot(model)
+# predictions <- predict(model, test_knn)
+# head(predictions)
+# mean(predictions == test_knn$Direction)
+```
+
