@@ -1,0 +1,314 @@
+---
+title: "ME314 2018 Exam"
+author: "Ionelia Buzatu"
+output: html_document
+---
+
+**INSTRUCTIONS:** Answer **four** of the **five** questions.  If you answer five, we will base your grade on the best four of five.  Each of your four best questions is weighted equally in the determination of your overall grade.  (25 points each)
+
+
+```{r message=FALSE}
+library(tm)
+library(quanteda)
+library(quanteda.corpora)
+library(readtext)
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(boot)
+library(glmnet)
+library(readtext)
+library(class)
+library(heuristica)
+library(e1071)
+library(mlbench)
+```
+
+### Question 1
+
+Using the `Boston` dataset (`MASS` package), predict the per capita crime rate using the other variables in this data set.  In other words, per capita crime rate is the response, and the other variables are the predictors.
+
+```{r}
+data(Boston, package = "MASS")
+
+# first attent to data analytics
+head(Boston)
+pairs(Boston)
+```
+
+
+(a) For each predictor, fit a simple (single-variable) linear regression model to predict the response.  In which of the models is there a statistically significant association between the predictor and the response? 
+
+```{r}
+## A for loop to get all single-variable linear regression models at once
+for(i in colnames(Boston[,-1])) { #  response variable is not included here
+  model = lm(crim~Boston[,i], data=Boston)
+  names(model$coefficients)[2] = i # assign the variable name in the model summary
+  summary = summary(model)
+  print(summary)
+  #single_coeff[[i]]= as.numeric(coef(model)[2])
+  #print(single_coeff)
+}
+
+## coeff for each model. Did copied and paste, there was an error with single_coeff[[i]]
+single_coef = c(-0.07393498,  0.50977633, -1.89277655, 31.24853120, -2.68405122,  0.10778623, -1.55090168, 0.61791093,  0.02974225,  1.15198279, -0.03627964,  0.54880478, -0.36315992)
+```
+  
+**The F-statistic is far from 1 (with a small p-value), indicating evidence against the null hypothesis.**
+**Looking at the p-values associated with each predictor's t-statistic, we see that there is a statistically significant association for each predictor and the response except for the chas.**
+
+(b) Fit a multiple regression model to predict the response using all of the predictors. Describe your results. For which predictors can we reject the null hypothesis $H_0 : \beta_j = 0$?
+
+**We reject the null hypothesis for  dis, rad, medv, zn and black, based on the p-values, F-statistic, and p-value of the F-statistic.**
+
+```{r}
+## multiple regression model
+lm_model = lm(crim~., data = Boston)
+
+## check for which predictors we can reject the null hypothesis $H_0 : \beta_j = 0$
+summary(lm_model)
+
+## excluding the Intercept coefficient
+multiple_coeff = coef(lm_model)[-1]
+```
+
+
+(c) How do your results from (a) compare to your results from (b)? Create a plot displaying the univariate regression coefficients from (a) on the $x$-axis, and the multiple regression coefficients from (b) on the $y$-axis. That is, each predictor is displayed as a single point in the plot. Its coefficient in a simple linear regression model is shown on the $x$-axis, and its coefficient estimate in the multiple linear regression model is shown on the $y$-axis.  Hint: To get the coefficients from a fitted regression model, you can use `coef()`.  Note that you are not interested in the intercept.
+
+```{r}
+## blue is y-axis and dark red is x-axis
+## there is high similaity between the coefficents from the single-variable linear regression models and the multiple regression model except for the nox -10.313534912 (blue) which lies far from the others.
+plot(x = single_coef, y = multiple_coeff, main= "Univariate regression coefficients", col = c("dark red", "blue"), lwd  =2)
+```
+
+
+### Question 2
+
+Using the `Boston` data set, fit classification models in order to predict whether a given suburb has a crime rate above or below the median.  Produce a confusion matrix for, and describe the findings from your model, for each of:
+
+a.  logistic regression
+
+```{r}
+# ## binary variable `crim01`, containg 1 if `crim` contains a value above its median, and a 0 if `crim` contains a value below its median
+crim01  = rep(0, length(Boston$crim))
+median = median(Boston$crim)
+crim01[Boston$crim > median] <- 1
+
+#merge them into a data frame object
+Auto <- data.frame(crim01, Boston)
+# 
+# #fisrt 20
+# Auto$crim01[1:20]
+# 
+# ## exploration
+# cor(Auto[,-9])
+# pairs(Auto)
+# 
+# head(Auto)
+# head(train)
+# ## train and test sets
+# train_1 <-  Auto[1:350,]
+# test_1 <-   Auto[351:506,]
+# 
+# crim01.test <-  test_1$crim01
+# 
+# # LR model
+# # glm.fit <-  glm(crim01 ~., data = train_!, family = binomial)
+# # glm.probs <-  predict(glm.fit, test_!, type = "response")
+# # glm.pred <-  rep(0, length(glm.probs))
+# # glm.pred[glm.probs > 0.5] <- 1
+# 
+# # estimate the test error
+# test_error = mean(glm.pred  !=  crim01.test)
+
+```
+
+**3.205128% test error rate. So high accuracy, 96,79487%**
+
+
+
+b.  kNN
+
+
+```{r}
+#split data into train and test sets
+train <-  Auto[1:350,]
+test <-   Auto[351:506,]
+crim01.test <-  test$crim01
+
+
+
+dim(Auto)
+str(train)
+# bind the variables
+train.X <-  cbind(train$zn, train$indus, train$chas, train$nox, train$rm, train$age, train$dis, train$rad, train$tax, train$ptratio, train$black, train$lstat, train$medv)
+test.X <-  cbind(test$zn, test$indus, test$chas, test$nox, test$rm, test$age, test$dis, test$rad, test$tax, test$ptratio, test$black, test$lstat, test$medv)
+train.crim01 <- train$crim01
+
+# reproducible results
+set.seed(1)
+
+# KNN (k=1)
+knn.pred <-  knn(train.X, test.X, train.crim01, k = 1)
+mean(knn.pred != crim01.test) # test error 0.5961538
+
+# KNN (k=10)
+knn.pred <-  knn(train.X, test.X, train.crim01, k = 10)
+mean(knn.pred != crim01.test) #test error  0.05769231
+
+# KNN (k=100)
+knn.pred <-  knn(train.X, test.X, train.crim01, k = 100)
+mean(knn.pred !=  crim01.test) # test error 0.75
+
+# KNN (k=300)
+knn.pred <-  knn(train.X, test.X, train.crim01, k = 300)
+mean(knn.pred !=  crim01.test) # test error 0.8653846
+```
+
+**k=1, 59.61538% test error rate. k=10, 5.769231% test error rate. k=100, 75% test error rate. K of 300 seems to perform the best. 300 nearest neighbors.**
+
+
+c.  (**bonus**) Naive Bayes predictors of your outcome.  (Use the **e1071** package for this.)
+
+```{r}
+
+## NB 
+
+## fcatorise 'crim01'
+naive_Auto = naiveBayes(as.factor(crim01)~., data = Auto)
+
+## make prediction using the test set
+pred = predict(naive_Auto, Auto, type = "class")
+
+## check the model
+table(pred, Auto$crim01, dnn=c("Prediction","Actual"))
+```
+
+
+
+**Note:** You do not have to split the data into test and training sets here.  Just predict on the training sample, which consists of the entire dataset.
+
+### Question 3
+
+(a) Give the standard error of the median for the `crim` variable from `data(Boston, package = "MASS")`.
+
+```{r}
+# This is a very high stand. error
+sd(Boston$crim)/sqrt(length(Boston$crim)) * 1.253    # 0.4791288                                                                               
+```
+
+
+(b) Estimate a bootstrapped standard error for the coefficient of `medv` in a logistic regression model of the above/below median of crime binary variable from question 2, with `medv`, `indus`, `age`, `black`, and `ptratio` as predictors.  Compare this to the asymptotic standard error from the maximum likelihood estimation (reported by `summary.glm()`).
+
+
+```{r}
+# pairs(Auto)
+# head(Boston)
+# head(Auto)
+get.coeffic = function(data, indices){
+  data    = data[indices,]
+  mylogit = glm(crim01~medv +indus +age +black +ptratio, data=data, family="binomial")
+  summary(mylogit)
+  return(coef(mylogit)) ## $coefficients
+}
+
+## maximum likelihood estimation of the standard error of the coefficient of `medv` is 0.019482
+summary.glm(glm(crim01~medv +indus +age +black +ptratio, data=Auto, family="binomial"))
+
+## bootstrap estimators
+boot(data = Auto, statistic = get.coeffic, R = 1000) # 4.723151983
+```
+***Estimation of a bootstrapped standard error for the coefficient of `medv` is 4.723151983%. It's much higher compared to the maximum likelihood estimation which is 0.019482.***
+
+
+### Question 4
+
+Using `quanteda`, construct an English language dictionary for "populism" for English, using the word patterns found in Appendix B of [Rooduijn, Matthijs, and Teun Pauwels. 2011. "Measuring Populism: Comparing Two Methods of Content Analysis."  *West European Politics* 34(6): 1272–83.](Populism_2011.pdf)
+
+Use this dictionary to measure the relative amount of populism, as a total of all words in, the `data_corpus_irishbudget2010` when these are grouped by political party.  Hint: You will need to make two dfm objects, one for all words, and one for the dictionary, and get a proportion.  Plot the proportions by party using a dotchart.
+
+
+```{r}
+
+data("data_corpus_irishbudget2010")
+
+# dictionary from Table B
+Dic = dictionary(list(populism = c("eliit*", "consensus*", "undemocratic*", "referend*", "corrupt*", "propagand*", "politici*", "*deceit*", "*deceiv*","*betray*", "shame*", "scandal*",
+"truth*", "dishonest*", "establishm*", "ruling*")))
+
+# first one
+dfm_data_group = dfm(data_corpus_irishbudget2010, groups = "party")
+# second one
+dfm21 = dfm(dfm_data_group , dictionary = Dic)
+
+proportion = ntoken(dfm21) / ntoken(dfm_data_group)
+dotchart(proportion, pch = 9 , color = c("red", "yellow", "blue", "green", "purple"))
+```
+
+
+
+### Question 5
+
+Here we will use k-means clustering to see if we can produce groupings by party of the 1984 US House of Representatives, based on their voting records from 16 votes.  This data is the object `HouseVotes84` from the `mlbench` package.  Since this is stored as a list of factors, use the following code to transform it into a method that will work with the `kmeans()` function.
+```{r}
+data(HouseVotes84, package = "mlbench") 
+head(HouseVotes84)
+#test = unclass(HouseVotes84[,2])
+HouseVotes84num <- as.data.frame(lapply(HouseVotes84[, -1], unclass))
+HouseVotes84num[is.na(HouseVotes84num)] <- 0
+set.seed(2)  # make sure you do this before step b below
+```
+
+a.  What does each line of that code snippet do, and why was this operation needed?  What is the `-1` indexing for?
+
+***-1 excludes the first column since is what we want to predict. Unclass is an object-oriented style of programming so it turns n and y into 0 and 1.***
+
+b.  Perform a kmeans clustering on the votes only data, for 2 classes, after setting the seed to 2 as per above.  Construct a table comparing the actual membership of the Congressperson's party (you will find this as one of the variables in the `HouseVotes84` data) to the cluster assigned by the kmeans procedure.  Report the 
+    i.   accuracy  
+    ii.  precision  
+    iii.  recall = sensitivity 
+
+```{r}
+# accuracy = (true positive + true negatve) / all (100 times this is the same as percentCorrect)
+# sensitivity = true pasitive rate = true positive / all positive (sensitivity is also called recall)
+# 2 repubblican
+# 1 democratic
+
+set.seed(2)
+
+kmeans_model = kmeans(HouseVotes84num, 2)
+kmeans_model$cluster[kmeans_model$cluster == 2]
+kmeans_model$cluster[kmeans_model$cluster == 1]
+tab = table(kmeans_model$cluster, HouseVotes84$Class)
+tab
+
+accurcy =  (tab[1,1] + tab[2,2]) / 435 # 0.8689655
+
+precision = tab[1,1]/(tab[1,1] + tab[1,2]) # 0.9565217
+
+recall = tab[1,1]/(tab[1,1] + tab[2,1]) # 0.82397
+  
+
+
+```
+
+
+c.  Repeat b twice more to produce three more confusion matrix tables, comparing the results.  Are they the same?  If not, why not?
+
+```{r}
+kmeans_model = kmeans(HouseVotes84num, 2)
+tab = table(kmeans_model$cluster, HouseVotes84$Class)
+tab
+
+#tab
+  #  democrat republican
+  # 1       47        158
+  # 2      220         10
+
+#tab
+  #   democrat republican
+  # 1      220         10
+  # 2       47        158
+```
+
+***Changes if set.seed() is missing***
